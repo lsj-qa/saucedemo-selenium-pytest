@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+TestResult.html
+assets/
+.venv/
+venv/
+.idea/
+.vscode/
+
+# 개인 안내문 (공개 대상 아님)
+_안내_읽어보세요.md
