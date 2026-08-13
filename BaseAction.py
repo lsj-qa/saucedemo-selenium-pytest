@@ -156,24 +156,45 @@ class BaseAction:
         """
         입력한 뒤 **값이 실제로 남아 있는지까지 확인**한다.
 
-        화면이 다 그려지기 전에 입력하면, 이어서 화면이 그려질 때 입력값이
-        초기값으로 되돌아간다. 이때도 예외는 발생하지 않아 입력에 성공한 것처럼
-        보이고, '필수값 누락' 같은 엉뚱한 결과로 뒤늦게 드러난다.
+        화면이 다 그려지기 전에 입력하면 입력이 통째로 무시되거나, 이어서 화면이
+        그려질 때 입력값이 초기값으로 되돌아간다. 이때도 예외는 발생하지 않아
+        입력에 성공한 것처럼 보이고, '필수값 누락' 같은 엉뚱한 결과로 뒤늦게 드러난다.
+
+        화면이 준비되는 데 걸리는 시간은 환경마다 다르므로, 확인에도 대기를 두고
+        반영될 때까지 여러 번 시도한다.
         """
-        for attempt in (1, 2, 3):
+        last_seen = None
+        for attempt in range(1, 6):
             try:
                 element = self.wait.until(EC.element_to_be_clickable(locator))
-                element.clear()
+                # 빈 칸에 clear() 를 부르면 불필요하게 화면이 다시 그려진다.
+                # 그 과정에서 요소가 교체되므로, 지운 뒤에는 다시 찾아서 입력한다.
+                if element.get_attribute("value"):
+                    element.clear()
+                    element = self.driver.find_element(*locator)
                 element.send_keys(text)
             except StaleElementReferenceException:
                 continue
             except TimeoutException:
                 raise AssertionError(f"입력할 수 없습니다: {locator}")
 
-            if self.get_value(locator) == text:
+            if self._value_becomes(locator, text):
                 return
+            last_seen = self.get_value(locator)
 
-        raise AssertionError(f"입력값이 유지되지 않습니다: {locator} = '{text}'")
+        raise AssertionError(
+            f"입력값이 유지되지 않습니다: {locator} = '{text}' (마지막 값: {last_seen!r})"
+        )
+
+    def _value_becomes(self, locator, text, timeout=2):
+        """입력값이 반영될 때까지 대기. 화면이 아직 준비 중이면 시간이 걸릴 수 있다."""
+        try:
+            WebDriverWait(self.driver, timeout, poll_frequency=0.3).until(
+                lambda d: d.find_element(*locator).get_attribute("value") == text
+            )
+            return True
+        except (TimeoutException, StaleElementReferenceException):
+            return False
 
     def get_value(self, locator):
         """입력 요소에 실제로 담겨 있는 값. 화면에 보이는 텍스트가 아니다."""

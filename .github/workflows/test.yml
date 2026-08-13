@@ -48,3 +48,13 @@ jobs:
           name: test-report
           path: TestResult.html
           retention-days: 14
+
+      # 이 환경에서만 재현되는 실패는 로그만으로 원인을 좁히기 어렵다.
+      - name: 실패 화면 업로드
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: failures/
+          retention-days: 14
+          if-no-files-found: ignore

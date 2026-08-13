@@ -4,6 +4,9 @@ pytest 공통 설정 — WebDriver 생성/종료 및 공용 fixture
 원본(Appium) 구조에서 드라이버 계층만 Selenium 으로 교체한 파일입니다.
 테스트 함수는 driver 를 직접 만들지 않고 fixture 로 주입받습니다.
 """
+import re
+from pathlib import Path
+
 import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -12,6 +15,10 @@ from BaseAction import BaseAction
 from ele_login import LoginPage
 
 BASE_URL = "https://www.saucedemo.com/"
+
+# 실패한 순간의 화면과 HTML 을 남겨 둘 위치.
+# 다른 환경(CI)에서만 재현되는 실패는 로그만으로 원인을 좁히기 어렵다.
+FAILURE_DIR = Path(__file__).parent / "failures"
 
 # 데모 사이트 공개 계정 (사이트 첫 화면에 게시된 값)
 STANDARD_USER = "standard_user"
@@ -48,6 +55,27 @@ def driver(request):
     yield drv
 
     drv.quit()
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
+    """테스트가 실패하면 그 시점의 화면과 HTML 을 파일로 남긴다."""
+    report = yield
+
+    if report.when == "call" and report.failed:
+        drv = item.funcargs.get("driver")
+        if drv is not None:
+            FAILURE_DIR.mkdir(exist_ok=True)
+            name = re.sub(r"[^\w.-]", "_", item.name)
+            try:
+                drv.save_screenshot(str(FAILURE_DIR / f"{name}.png"))
+                (FAILURE_DIR / f"{name}.html").write_text(
+                    drv.page_source, encoding="utf-8"
+                )
+            except Exception as exc:  # 저장 실패가 테스트 결과를 덮어쓰지 않도록 한다
+                print(f"[실패 화면 저장 실패] {name}: {exc}")
+
+    return report
 
 
 @pytest.fixture()

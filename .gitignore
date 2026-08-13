@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 TestResult.html
 assets/
+failures/
 .venv/
 venv/
 .idea/
