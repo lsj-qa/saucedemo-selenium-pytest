@@ -197,6 +197,24 @@ AssertionError: 예상과 다른 메시지: Error: First Name is required   ← 
 `click()` 과 `send_keys()` 모두 **"했다"가 아니라 "반영되었다"를 기준으로** 바꾼 것이
 공통점입니다.
 
+### 실패한 순간의 화면을 남기도록
+
+여기까지 오는 동안 원인이 두 번 바뀌었습니다. 로컬에서 재현되지 않는 실패를
+로그만 보고 좁히는 데 한계가 있어, **실패 시점의 화면과 HTML 을 파일로 남기도록** 했습니다.
+
+```python
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
+    """테스트가 실패하면 그 시점의 화면과 HTML 을 파일로 남긴다."""
+    report = yield
+    if report.when == "call" and report.failed:
+        drv = item.funcargs.get("driver")
+        ...
+```
+
+CI 에서는 실패했을 때만 `failure-screenshots` 라는 이름으로 내려받을 수 있게 했습니다.
+다른 사람이 이 저장소를 받아 실행하다 실패해도, 로그와 함께 화면을 그대로 확인할 수 있습니다.
+
 ---
 
 ## 케이스 설계 관점
