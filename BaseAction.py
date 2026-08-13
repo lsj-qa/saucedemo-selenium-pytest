@@ -14,7 +14,8 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 
 class BaseAction:
-    def __init__(self, driver, timeout=10):
+    # CI 서버는 로컬보다 3배가량 느려, 로컬 기준으로 맞추면 대기가 부족하다.
+    def __init__(self, driver, timeout=15):
         self.driver = driver
         self.wait = WebDriverWait(driver, timeout, poll_frequency=0.5)
 
@@ -127,6 +128,11 @@ class BaseAction:
             if until is not None:
                 if isinstance(until, str):
                     wait.until(EC.url_contains(until))
+                    # URL 이 바뀐 시점에는 화면이 아직 그려지는 중일 수 있다.
+                    # 이때 입력하면 이어서 화면이 그려질 때 입력값이 지워진다.
+                    wait.until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
                 else:
                     wait.until(EC.visibility_of_element_located(until))
             if until_gone is not None:
@@ -147,9 +153,34 @@ class BaseAction:
             pass
 
     def send_keys(self, locator, text):
-        el = self.wait.until(EC.visibility_of_element_located(locator))
-        el.clear()
-        el.send_keys(text)
+        """
+        입력한 뒤 **값이 실제로 남아 있는지까지 확인**한다.
+
+        화면이 다 그려지기 전에 입력하면, 이어서 화면이 그려질 때 입력값이
+        초기값으로 되돌아간다. 이때도 예외는 발생하지 않아 입력에 성공한 것처럼
+        보이고, '필수값 누락' 같은 엉뚱한 결과로 뒤늦게 드러난다.
+        """
+        for attempt in (1, 2, 3):
+            try:
+                element = self.wait.until(EC.element_to_be_clickable(locator))
+                element.clear()
+                element.send_keys(text)
+            except StaleElementReferenceException:
+                continue
+            except TimeoutException:
+                raise AssertionError(f"입력할 수 없습니다: {locator}")
+
+            if self.get_value(locator) == text:
+                return
+
+        raise AssertionError(f"입력값이 유지되지 않습니다: {locator} = '{text}'")
+
+    def get_value(self, locator):
+        """입력 요소에 실제로 담겨 있는 값. 화면에 보이는 텍스트가 아니다."""
+        try:
+            return self.find(locator).get_attribute("value")
+        except (TimeoutException, StaleElementReferenceException):
+            return None
 
     def clear(self, locator):
         self.find(locator).clear()

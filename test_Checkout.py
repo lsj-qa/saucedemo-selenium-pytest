@@ -14,6 +14,13 @@ LAST_NAME = "Lee"
 POSTAL_CODE = "06236"
 
 
+ALL_FIELDS = [
+    (CheckoutStepOne.first_name, FIRST_NAME),
+    (CheckoutStepOne.last_name, LAST_NAME),
+    (CheckoutStepOne.postal_code, POSTAL_CODE),
+]
+
+
 def _go_to_checkout(base, items):
     """상품을 담고 주문 정보 입력 화면까지 이동"""
     for item in items:
@@ -22,15 +29,31 @@ def _go_to_checkout(base, items):
     base.click(CartPage.checkout, until="checkout-step-one.html")
 
 
+def _fill_customer_info(base, fields):
+    """
+    배송 정보 입력.
+
+    한 칸을 채우는 사이에 화면이 다시 그려지면 앞서 채운 칸이 지워질 수 있어,
+    전부 입력한 뒤 값이 그대로 남아 있는지 다시 확인한다.
+    """
+    for attempt in (1, 2, 3):
+        for locator, value in fields:
+            base.send_keys(locator, value)
+
+        remaining = {locator: base.get_value(locator) for locator, _ in fields}
+        if all(remaining[locator] == value for locator, value in fields):
+            return
+
+    raise AssertionError(f"배송 정보 입력값이 유지되지 않습니다: {remaining}")
+
+
 def test_checkout_complete(logged_in):
     """주문 전체 플로우가 완료 화면까지 도달해야 한다"""
     driver, base = logged_in
 
     _go_to_checkout(base, [ITEM_BACKPACK])
 
-    base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
-    base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
-    base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
+    _fill_customer_info(base, ALL_FIELDS)
     base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
 
     base.click(CheckoutStepTwo.finish_button, until="checkout-complete.html")
@@ -45,7 +68,7 @@ def test_checkout_required_fields(logged_in):
     _go_to_checkout(base, [ITEM_BACKPACK])
 
     # 이름만 입력하고 진행
-    base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
+    _fill_customer_info(base, [(CheckoutStepOne.first_name, FIRST_NAME)])
     base.click(CheckoutStepOne.continue_button, until=CheckoutStepOne.error_message)
 
     message = base.get_text(CheckoutStepOne.error_message)
@@ -64,9 +87,7 @@ def test_checkout_summary_matches_cart(logged_in):
 
     _go_to_checkout(base, [ITEM_BACKPACK, ITEM_BIKE_LIGHT])
 
-    base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
-    base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
-    base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
+    _fill_customer_info(base, ALL_FIELDS)
     base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
 
     summary_names = sorted(base.get_texts(CheckoutStepTwo.item_name))
@@ -94,9 +115,7 @@ def test_order_complete_clears_cart(logged_in):
 
     _go_to_checkout(base, [ITEM_BACKPACK])
 
-    base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
-    base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
-    base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
+    _fill_customer_info(base, ALL_FIELDS)
     base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
     base.click(CheckoutStepTwo.finish_button, until="checkout-complete.html")
 
