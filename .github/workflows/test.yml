@@ -22,13 +22,20 @@ jobs:
           python-version: '3.12'
           cache: pip
 
+      # 실행 환경에 Chrome 이 있다고 가정하지 않고 명시적으로 설치한다.
+      - name: Chrome 설치
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
       - name: 실행 환경 확인
+        continue-on-error: true
         run: |
           python --version
-          google-chrome --version
+          chrome --version || google-chrome --version || echo "Chrome 버전 확인 생략"
 
       - name: 테스트 실행
         run: pytest --headless --html=TestResult.html --self-contained-html

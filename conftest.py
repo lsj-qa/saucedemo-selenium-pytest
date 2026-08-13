@@ -37,6 +37,8 @@ def driver(request):
     options.add_argument("--window-size=1440,900")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-gpu")
+    # CI 리눅스 서버는 공유 메모리 영역이 작아 브라우저가 도중에 죽는 경우가 있다.
+    options.add_argument("--disable-dev-shm-usage")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
     # Selenium 4.6+ 는 드라이버를 자동으로 내려받으므로 별도 설치가 필요 없습니다.
@@ -54,6 +56,5 @@ def logged_in(driver):
     base = BaseAction(driver)
     base.send_keys(LoginPage.username, STANDARD_USER)
     base.send_keys(LoginPage.password, PASSWORD)
-    base.click(LoginPage.login_button)
-    base.wait_url_contains("inventory.html")
+    base.click(LoginPage.login_button, until="inventory.html")
     return driver, base

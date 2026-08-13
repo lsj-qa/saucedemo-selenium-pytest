@@ -5,6 +5,7 @@
 대기 방식이나 예외 처리를 바꿔야 할 때 이 파일만 수정하면 됩니다.
 """
 from selenium.common.exceptions import (
+    ElementClickInterceptedException,
     StaleElementReferenceException,
     TimeoutException,
 )
@@ -72,26 +73,69 @@ class BaseAction:
 
     # ---------- 조작 ----------
 
-    def click(self, locator):
+    def click(self, locator, until=None, until_gone=None):
         """
-        클릭 불가 시 테스트 실패 처리.
+        클릭한 뒤 **실제로 반영되었는지까지 확인**한다.
 
-        대기 조건이 돌려준 요소를 그대로 클릭하면, 그 사이 화면이 다시 그려질 때
-        이미 분리된 요소를 누르게 되어 클릭이 조용히 무시된다.
-        (SPA 에서 흔한 현상으로, 예외도 발생하지 않아 원인 파악이 어렵다.)
+        화면이 다시 그려지는 시점과 클릭이 겹치면, 이미 분리된 요소를 누르게 되어
+        클릭이 조용히 무시된다. 예외가 발생하지 않으므로 그 자리에서는 통과한 것처럼
+        보이고, 한참 뒤 엉뚱한 단계에서 실패한다. (SPA 에서 흔한 현상)
 
-        그래서 클릭 가능 상태를 확인한 뒤 **다시 찾아서** 클릭한다.
+        그래서 클릭 가능 상태를 확인한 뒤 다시 찾아서 클릭하고,
+        기대한 변화가 나타나지 않으면 최대 3회까지 다시 클릭한다.
+
+        until      클릭이 반영되었다고 볼 조건
+                     - locator 튜플 : 그 요소가 나타나면 반영된 것
+                     - 문자열       : URL 에 그 문자열이 포함되면 반영된 것
+        until_gone 그 요소가 사라지면 반영된 것으로 본다
+
+        마지막 시도는 JavaScript 로 클릭한다. 좌표를 계산해 그 위치에 이벤트를
+        보내는 방식이 아니라 요소에 직접 보내므로, 화면이 밀려 좌표가 어긋나는
+        상황에서도 영향을 받지 않는다.
         """
         for attempt in (1, 2, 3):
             try:
                 self.wait.until(EC.element_to_be_clickable(locator))
-                self.driver.find_element(*locator).click()
-                return
-            except StaleElementReferenceException:
+                element = self.driver.find_element(*locator)
+                if attempt < 3:
+                    element.click()
+                else:
+                    self.driver.execute_script("arguments[0].click();", element)
+            except (StaleElementReferenceException, ElementClickInterceptedException):
                 continue
             except TimeoutException:
+                # 클릭이 이미 반영되어 요소 자체가 바뀐 경우까지 실패로 보지 않는다.
+                if self._is_applied(until, until_gone, timeout=1):
+                    return
                 raise AssertionError(f"클릭할 수 없습니다: {locator}")
-        raise AssertionError(f"요소 참조가 계속 끊깁니다: {locator}")
+
+            if self._is_applied(until, until_gone):
+                return
+
+        raise AssertionError(
+            f"클릭이 반영되지 않았습니다: {locator} "
+            f"(확인 조건: until={until}, until_gone={until_gone})"
+        )
+
+    def _is_applied(self, until, until_gone, timeout=5):
+        """클릭 결과가 화면에 반영되었는지 확인. 확인 조건이 없으면 그대로 통과."""
+        if until is None and until_gone is None:
+            return True
+
+        wait = WebDriverWait(self.driver, timeout, poll_frequency=0.3)
+        try:
+            if until is not None:
+                if isinstance(until, str):
+                    wait.until(EC.url_contains(until))
+                else:
+                    wait.until(EC.visibility_of_element_located(until))
+            if until_gone is not None:
+                wait.until(EC.invisibility_of_element_located(until_gone))
+            return True
+        except TimeoutException:
+            return False
+        except StaleElementReferenceException:
+            return False
 
     def click_pass(self, locator):
         """요소가 없어도 다음 단계로 진행. (선택적으로 노출되는 요소용)"""

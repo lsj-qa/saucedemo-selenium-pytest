@@ -17,11 +17,9 @@ POSTAL_CODE = "06236"
 def _go_to_checkout(base, items):
     """상품을 담고 주문 정보 입력 화면까지 이동"""
     for item in items:
-        base.click(InventoryPage.add_to_cart(item))
-    base.click(Header.cart_link)
-    base.wait_url_contains("cart.html")
-    base.click(CartPage.checkout)
-    base.wait_url_contains("checkout-step-one.html")
+        base.click(InventoryPage.add_to_cart(item), until=InventoryPage.remove(item))
+    base.click(Header.cart_link, until="cart.html")
+    base.click(CartPage.checkout, until="checkout-step-one.html")
 
 
 def test_checkout_complete(logged_in):
@@ -33,12 +31,10 @@ def test_checkout_complete(logged_in):
     base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
     base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
     base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
-    base.click(CheckoutStepOne.continue_button)
+    base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
 
-    base.wait_url_contains("checkout-step-two.html")
-    base.click(CheckoutStepTwo.finish_button)
+    base.click(CheckoutStepTwo.finish_button, until="checkout-complete.html")
 
-    base.wait_url_contains("checkout-complete.html")
     assert "Thank you for your order" in base.get_text(CheckoutComplete.header)
 
 
@@ -50,7 +46,7 @@ def test_checkout_required_fields(logged_in):
 
     # 이름만 입력하고 진행
     base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
-    base.click(CheckoutStepOne.continue_button)
+    base.click(CheckoutStepOne.continue_button, until=CheckoutStepOne.error_message)
 
     message = base.get_text(CheckoutStepOne.error_message)
     assert "Last Name is required" in message, f"예상과 다른 메시지: {message}"
@@ -71,8 +67,7 @@ def test_checkout_summary_matches_cart(logged_in):
     base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
     base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
     base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
-    base.click(CheckoutStepOne.continue_button)
-    base.wait_url_contains("checkout-step-two.html")
+    base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
 
     summary_names = sorted(base.get_texts(CheckoutStepTwo.item_name))
     assert len(summary_names) == 2, f"확인 화면 상품 수가 다릅니다: {summary_names}"
@@ -88,8 +83,7 @@ def test_checkout_cancel_keeps_cart(logged_in):
 
     _go_to_checkout(base, [ITEM_BACKPACK])
 
-    base.click(CheckoutStepOne.cancel_button)
-    base.wait_url_contains("cart.html")
+    base.click(CheckoutStepOne.cancel_button, until="cart.html")
 
     assert base.count(CartPage.item) == 1, "주문 취소 후 장바구니가 비워졌습니다"
 
@@ -103,8 +97,7 @@ def test_order_complete_clears_cart(logged_in):
     base.send_keys(CheckoutStepOne.first_name, FIRST_NAME)
     base.send_keys(CheckoutStepOne.last_name, LAST_NAME)
     base.send_keys(CheckoutStepOne.postal_code, POSTAL_CODE)
-    base.click(CheckoutStepOne.continue_button)
-    base.click(CheckoutStepTwo.finish_button)
-    base.wait_url_contains("checkout-complete.html")
+    base.click(CheckoutStepOne.continue_button, until="checkout-step-two.html")
+    base.click(CheckoutStepTwo.finish_button, until="checkout-complete.html")
 
     assert base.is_absent(Header.cart_badge), "주문이 완료되었는데 장바구니에 수량이 남아 있습니다"

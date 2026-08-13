@@ -16,13 +16,12 @@ def test_login_logout(driver):
 
     base.send_keys(LoginPage.username, STANDARD_USER)
     base.send_keys(LoginPage.password, PASSWORD)
-    base.click(LoginPage.login_button)
+    base.click(LoginPage.login_button, until="inventory.html")
 
-    base.wait_url_contains("inventory.html")
     assert base.get_text(InventoryPage.title) == "Products"
 
-    base.click(Header.burger_menu)
-    base.click(Header.logout_link)
+    base.click(Header.burger_menu, until=Header.logout_link)
+    base.click(Header.logout_link, until=LoginPage.login_button)
 
     assert base.is_displayed(LoginPage.login_button), "로그아웃 후 로그인 화면으로 돌아오지 않았습니다"
 
@@ -33,7 +32,7 @@ def test_login_locked_out_user(driver):
 
     base.send_keys(LoginPage.username, LOCKED_OUT_USER)
     base.send_keys(LoginPage.password, PASSWORD)
-    base.click(LoginPage.login_button)
+    base.click(LoginPage.login_button, until=LoginPage.error_message)
 
     message = base.get_text(LoginPage.error_message)
     assert "locked out" in message, f"예상과 다른 메시지: {message}"
@@ -46,7 +45,7 @@ def test_login_wrong_password(driver):
 
     base.send_keys(LoginPage.username, STANDARD_USER)
     base.send_keys(LoginPage.password, "wrong_password")
-    base.click(LoginPage.login_button)
+    base.click(LoginPage.login_button, until=LoginPage.error_message)
 
     assert base.is_displayed(LoginPage.error_message)
     assert "inventory.html" not in driver.current_url
@@ -56,7 +55,7 @@ def test_login_empty_input(driver):
     """아이디·비밀번호 미입력 시 안내 문구가 노출되어야 한다"""
     base = BaseAction(driver)
 
-    base.click(LoginPage.login_button)
+    base.click(LoginPage.login_button, until=LoginPage.error_message)
 
     message = base.get_text(LoginPage.error_message)
     assert "Username is required" in message, f"예상과 다른 메시지: {message}"
@@ -73,11 +72,10 @@ def test_logout_then_back_button(driver):
 
     base.send_keys(LoginPage.username, STANDARD_USER)
     base.send_keys(LoginPage.password, PASSWORD)
-    base.click(LoginPage.login_button)
-    base.wait_url_contains("inventory.html")
+    base.click(LoginPage.login_button, until="inventory.html")
 
-    base.click(Header.burger_menu)
-    base.click(Header.logout_link)
+    base.click(Header.burger_menu, until=Header.logout_link)
+    base.click(Header.logout_link, until=LoginPage.login_button)
 
     driver.back()
 

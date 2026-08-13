@@ -13,11 +13,11 @@ def test_add_to_cart(logged_in):
     """상품을 담으면 배지 수량이 증가하고 장바구니에 노출되어야 한다"""
     driver, base = logged_in
 
-    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK))
+    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK),
+               until=InventoryPage.remove(ITEM_BACKPACK))
     assert base.get_text(Header.cart_badge) == "1"
 
-    base.click(Header.cart_link)
-    base.wait_url_contains("cart.html")
+    base.click(Header.cart_link, until="cart.html")
 
     names = base.get_texts(CartPage.item_name)
     assert len(names) == 1
@@ -28,12 +28,14 @@ def test_add_multiple_items(logged_in):
     """여러 상품을 담으면 수량이 누적되어야 한다"""
     driver, base = logged_in
 
-    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK))
-    base.click(InventoryPage.add_to_cart(ITEM_BIKE_LIGHT))
+    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK),
+               until=InventoryPage.remove(ITEM_BACKPACK))
+    base.click(InventoryPage.add_to_cart(ITEM_BIKE_LIGHT),
+               until=InventoryPage.remove(ITEM_BIKE_LIGHT))
 
     assert base.get_text(Header.cart_badge) == "2"
 
-    base.click(Header.cart_link)
+    base.click(Header.cart_link, until="cart.html")
     assert base.count(CartPage.item) == 2
 
 
@@ -41,11 +43,11 @@ def test_remove_from_cart(logged_in):
     """장바구니에서 제거하면 배지가 사라져야 한다"""
     driver, base = logged_in
 
-    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK))
-    base.click(Header.cart_link)
-    base.wait_url_contains("cart.html")
+    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK),
+               until=InventoryPage.remove(ITEM_BACKPACK))
+    base.click(Header.cart_link, until="cart.html")
 
-    base.click(CartPage.remove(ITEM_BACKPACK))
+    base.click(CartPage.remove(ITEM_BACKPACK), until_gone=Header.cart_badge)
 
     assert base.count(CartPage.item) == 0
     assert base.is_absent(Header.cart_badge), "장바구니를 비웠는데 수량 배지가 남아 있습니다"
@@ -59,16 +61,15 @@ def test_cart_kept_after_navigation(logged_in):
     """
     driver, base = logged_in
 
-    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK))
-    base.click(Header.cart_link)
-    base.wait_url_contains("cart.html")
+    base.click(InventoryPage.add_to_cart(ITEM_BACKPACK),
+               until=InventoryPage.remove(ITEM_BACKPACK))
+    base.click(Header.cart_link, until="cart.html")
 
-    base.click(CartPage.continue_shopping)
-    base.wait_url_contains("inventory.html")
+    base.click(CartPage.continue_shopping, until="inventory.html")
 
     assert base.get_text(Header.cart_badge) == "1", "목록으로 돌아오자 장바구니가 초기화되었습니다"
 
-    base.click(Header.cart_link)
+    base.click(Header.cart_link, until="cart.html")
     assert base.count(CartPage.item) == 1
 
 
@@ -85,13 +86,11 @@ def test_add_remove_repeat(logged_in):
     driver, base = logged_in
 
     for i in range(1, 4):
-        base.click(InventoryPage.add_to_cart(ITEM_BACKPACK))
-        assert base.is_displayed(InventoryPage.remove(ITEM_BACKPACK)), \
-            f"{i}회차: 담기 후 제거 버튼으로 전환되지 않았습니다"
+        base.click(InventoryPage.add_to_cart(ITEM_BACKPACK),
+                   until=InventoryPage.remove(ITEM_BACKPACK))
         assert base.get_text(Header.cart_badge) == "1", \
             f"{i}회차: 수량이 1이 아닙니다"
 
-        base.click(InventoryPage.remove(ITEM_BACKPACK))
-        assert base.is_displayed(InventoryPage.add_to_cart(ITEM_BACKPACK)), \
-            f"{i}회차: 제거 후 담기 버튼으로 복귀하지 않았습니다"
+        base.click(InventoryPage.remove(ITEM_BACKPACK),
+                   until=InventoryPage.add_to_cart(ITEM_BACKPACK))
         assert base.is_absent(Header.cart_badge), f"{i}회차: 제거 후에도 수량 배지가 남아 있습니다"
