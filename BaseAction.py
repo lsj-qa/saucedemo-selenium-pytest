@@ -169,9 +169,13 @@ class BaseAction:
         무엇이 통하는지 모른 채 우회부터 하면 원인이 영영 묻힌다.
 
             1) 칸을 눌러 포커스를 준 뒤 입력
-            2) 포커스를 주지 않고 입력
+            2) 창 포커스를 되돌린 뒤 입력
             3) 마우스·키보드 동작을 직접 조합해 입력
             4) 값을 직접 넣고 입력 이벤트 발생 (실제 키 입력이 아닌 마지막 수단)
+
+        2번이 필요한 이유 — 요소에 포커스가 있어도 **창(탭) 이 키보드 입력을 받는
+        상태가 아니면** 키는 어디에도 도달하지 않는다. 화면 이동을 여러 번 거치면
+        창이 그 상태를 잃는 경우가 있어, 창을 다시 지정해 되돌린다.
         """
         trace = []
         for attempt in range(1, 6):
@@ -188,7 +192,11 @@ class BaseAction:
                     element.click()
                     element.send_keys(text)
                 elif attempt == 2:
-                    method = "포커스 없이 입력"
+                    method = "창 포커스 복구 후 입력"
+                    # 창을 다시 지정하면 그 창이 키보드 입력을 받는 상태로 돌아온다.
+                    self.driver.switch_to.window(self.driver.current_window_handle)
+                    element = self.driver.find_element(*locator)
+                    element.click()
                     element.send_keys(text)
                 elif attempt == 3:
                     method = "마우스·키보드 동작으로 입력"
@@ -209,11 +217,15 @@ class BaseAction:
                     # 통과했더라도 원인은 남아 있으므로 확인이 필요하다.
                     print(f"[입력 방식 전환] {locator} → {attempt}회차 '{method}' 로 성공")
                     print(f"  경과: {trace}")
-                    if attempt >= 4:
-                        print(f"  칸 상태: {self._input_state(locator)}")
+                    print(f"  칸 상태: {self._input_state(locator)}")
                 return
 
-            trace.append(f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r}")
+            state = self._input_state(locator)
+            has_focus = state.get("doc_has_focus") if isinstance(state, dict) else None
+            trace.append(
+                f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r} "
+                f"창포커스={has_focus}"
+            )
 
         raise AssertionError(
             f"입력값이 유지되지 않습니다: {locator} = '{text}' "
@@ -241,6 +253,9 @@ class BaseAction:
                     disabled: element.disabled,
                     focused: active === element,
                     active_id: active ? active.id : null,
+                    // 요소에 포커스가 있어도 문서가 키보드 입력을 받는 상태가 아니면
+                    // 키는 어디에도 도달하지 않는다. 둘은 별개의 상태다.
+                    doc_has_focus: document.hasFocus(),
                     on_top: onTop ? (onTop.id || onTop.className || onTop.tagName) : null,
                     size: [Math.round(box.width), Math.round(box.height)],
                 };
