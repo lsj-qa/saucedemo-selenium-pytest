@@ -168,14 +168,13 @@ class BaseAction:
         먹히므로, 아래 순서대로 바꿔가며 시도하고 **어느 방식에서 통과했는지를 남긴다.**
         무엇이 통하는지 모른 채 우회부터 하면 원인이 영영 묻힌다.
 
-            1) 칸을 눌러 포커스를 준 뒤 입력
-            2) 창 포커스를 되돌린 뒤 입력
-            3) 마우스·키보드 동작을 직접 조합해 입력
-            4) 값을 직접 넣고 입력 이벤트 발생 (실제 키 입력이 아닌 마지막 수단)
+            1) 칸을 눌러 포커스를 준 뒤 입력      (실제 키 입력)
+            2) 마우스·키보드 동작을 조합해 입력    (실제 키 입력, 전달 경로가 다름)
+            3) 값을 직접 넣고 입력 이벤트 발생     (키 입력이 아닌 마지막 수단)
 
-        2번이 필요한 이유 — 요소에 포커스가 있어도 **창(탭) 이 키보드 입력을 받는
-        상태가 아니면** 키는 어디에도 도달하지 않는다. 화면 이동을 여러 번 거치면
-        창이 그 상태를 잃는 경우가 있어, 창을 다시 지정해 되돌린다.
+        3번은 실제 사용자 조작이 아니므로 우선 쓰지 않는다. 다만 특정 환경에서
+        키 입력이 화면에 도달하지 않는 경우가 확인되어, 그때만 쓰도록 남겨 두었다.
+        쓰였을 때는 로그에 남는다. 경위는 docs/입력_문제_조사기록.md 참고.
         """
         trace = []
         for attempt in range(1, 6):
@@ -193,20 +192,13 @@ class BaseAction:
                     element.click()
                     element.send_keys(text)
                 elif attempt == 2:
-                    method = "화면을 직접 다시 연 뒤 입력"
-                    # 페이지가 스스로 이동한 뒤에는 키보드 입력 연결이 새 화면에
-                    # 붙지 않는 경우가 있다. 같은 주소를 직접 다시 열어 연결을 되돌린다.
-                    self.driver.get(self.driver.current_url)
-                    element = self.wait.until(EC.element_to_be_clickable(locator))
-                    self._watch_input_events(element)
-                    element.click()
-                    element.send_keys(text)
-                elif attempt == 3:
                     method = "마우스·키보드 동작으로 입력"
+                    self._watch_input_events(element)
                     ActionChains(self.driver).move_to_element(element) \
                         .click().send_keys(text).perform()
                 else:
                     method = "값 직접 입력"
+                    print(f"[실제 키 입력이 전달되지 않음 → 값 직접 입력] {locator}")
                     self._set_value_directly(element, text)
             except (StaleElementReferenceException, ElementClickInterceptedException) as exc:
                 trace.append(f"{attempt}회차 {type(exc).__name__}")
@@ -221,6 +213,7 @@ class BaseAction:
                     print(f"[입력 방식 전환] {locator} → {attempt}회차 '{method}' 로 성공")
                     print(f"  경과: {trace}")
                     print(f"  칸 상태: {self._input_state(locator)}")
+                    print("  경위: docs/입력_문제_조사기록.md")
                 return
 
             note = f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r}"
