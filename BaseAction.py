@@ -189,6 +189,7 @@ class BaseAction:
 
                 if attempt == 1:
                     method = "눌러서 포커스 후 입력"
+                    self._watch_input_events(element)
                     element.click()
                     element.send_keys(text)
                 elif attempt == 2:
@@ -220,12 +221,10 @@ class BaseAction:
                     print(f"  칸 상태: {self._input_state(locator)}")
                 return
 
-            state = self._input_state(locator)
-            has_focus = state.get("doc_has_focus") if isinstance(state, dict) else None
-            trace.append(
-                f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r} "
-                f"창포커스={has_focus}"
-            )
+            note = f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r}"
+            if attempt == 1:
+                note += f" 발생한 이벤트={self._read_input_events(locator)}"
+            trace.append(note)
 
         raise AssertionError(
             f"입력값이 유지되지 않습니다: {locator} = '{text}' "
@@ -264,6 +263,48 @@ class BaseAction:
             )
         except Exception as exc:
             return f"상태 확인 실패: {exc}"
+
+    def _watch_input_events(self, element):
+        """
+        칸에서 실제로 어떤 이벤트가 발생하는지 기록하기 시작한다.
+
+        키 입력이 값에 반영되지 않을 때, 끊긴 지점이 어디인지 알아야 한다.
+          - keydown 이 없다  → 키가 화면까지 도달하지 않음
+          - keydown 은 있는데 input 이 없다 → 입력이 중간에 막힘
+          - input 까지 있는데 값이 비어 있다 → 화면을 그리는 쪽이 값을 되돌림
+        요소가 통째로 교체되면 기록도 함께 사라지므로, 표식을 같이 남겨 구분한다.
+        """
+        self.driver.execute_script(
+            """
+            const element = arguments[0];
+            element.dataset.probe = '1';
+            element.__log = [];
+            for (const type of ['keydown', 'beforeinput', 'input', 'change']) {
+                element.addEventListener(type, function (event) {
+                    element.__log.push(
+                        type + (event.key ? ':' + event.key : '') +
+                        (event.defaultPrevented ? '(막힘)' : '')
+                    );
+                });
+            }
+            """,
+            element,
+        )
+
+    def _read_input_events(self, locator):
+        """기록된 이벤트를 읽어온다. 요소가 교체됐으면 그 사실을 알린다."""
+        try:
+            element = self.driver.find_element(*locator)
+            return self.driver.execute_script(
+                """
+                const element = arguments[0];
+                if (element.dataset.probe !== '1') return '요소가 교체됨';
+                return element.__log.length ? element.__log : '이벤트 없음';
+                """,
+                element,
+            )
+        except Exception as exc:
+            return f"확인 실패: {exc}"
 
     def _set_value_directly(self, element, text):
         """
