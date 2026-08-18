@@ -46,6 +46,11 @@ def driver(request):
     options.add_argument("--disable-gpu")
     # CI 리눅스 서버는 공유 메모리 영역이 작아 브라우저가 도중에 죽는 경우가 있다.
     options.add_argument("--disable-dev-shm-usage")
+    # 화면 없이 돌릴 때 브라우저가 창을 '가려진 상태'로 판정하면 키 입력이
+    # 화면에 전달되지 않는 경우가 있다. 그 판정 자체를 하지 않도록 한다.
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--disable-features=CalculateNativeWinOcclusion")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
     # Selenium 4.6+ 는 드라이버를 자동으로 내려받으므로 별도 설치가 필요 없습니다.

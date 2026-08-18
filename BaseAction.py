@@ -181,6 +181,9 @@ class BaseAction:
                     element.click()          # 포커스를 확실히 준 뒤 입력
                     element.send_keys(text)
                 else:
+                    # 우회 수단이 쓰였다는 사실이 드러나야 한다.
+                    # 통과했더라도 실제 키 입력은 실패한 것이므로 확인이 필요하다.
+                    print(f"[키 입력 실패 → 값 직접 입력] {locator} ({attempt}회차)")
                     self._set_value_directly(element, text)
             except (StaleElementReferenceException, ElementClickInterceptedException):
                 continue

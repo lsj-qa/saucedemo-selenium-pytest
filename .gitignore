@@ -4,6 +4,9 @@ __pycache__/
 TestResult.html
 assets/
 failures/
+
+# CI 에서 내려받은 실패 화면 (로컬 확인용)
+자동화실행 실패 스크린샷/
 .venv/
 venv/
 .idea/
