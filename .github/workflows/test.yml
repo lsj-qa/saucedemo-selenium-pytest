@@ -67,3 +67,48 @@ jobs:
           path: failures/
           retention-days: 14
           if-no-files-found: ignore
+
+  # 주문 정보 화면에서 키 입력이 전달되지 않아 값을 직접 넣는 우회로 통과하고 있다.
+  # 원인이 '화면 없이 실행하는 방식' 에 있는지 확인하기 위한 비교 실행으로,
+  # 같은 테스트를 가상 화면 위에 창을 실제로 띄운 채 돌린다.
+  #
+  # 우회 기록이 나오지 않으면 원인은 실행 방식에 있는 것이고,
+  # 그대로 나오면 실행 방식과 무관한 문제다.
+  input-method-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Chrome 설치
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 가상 화면 설치
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # --headless 를 빼고 실행한다. 창이 실제로 뜬 상태가 된다.
+      - name: 창을 띄운 채 주문 테스트 실행
+        run: |
+          set -o pipefail
+          xvfb-run -a pytest test_Checkout.py -s | tee headed.log
+
+      - name: 우회 사용 여부 판정
+        if: always()
+        run: |
+          if grep -q "값 직접 입력" headed.log; then
+            echo "::warning::창을 띄워도 키 입력이 전달되지 않았다 - 원인은 실행 방식이 아니다"
+          else
+            echo "::notice::창을 띄우면 키 입력이 정상 전달된다 - 원인은 화면 없이 실행하는 방식에 있다"
+          fi
