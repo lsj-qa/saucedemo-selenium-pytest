@@ -193,10 +193,12 @@ class BaseAction:
                     element.click()
                     element.send_keys(text)
                 elif attempt == 2:
-                    method = "창 포커스 복구 후 입력"
-                    # 창을 다시 지정하면 그 창이 키보드 입력을 받는 상태로 돌아온다.
-                    self.driver.switch_to.window(self.driver.current_window_handle)
-                    element = self.driver.find_element(*locator)
+                    method = "화면을 직접 다시 연 뒤 입력"
+                    # 페이지가 스스로 이동한 뒤에는 키보드 입력 연결이 새 화면에
+                    # 붙지 않는 경우가 있다. 같은 주소를 직접 다시 열어 연결을 되돌린다.
+                    self.driver.get(self.driver.current_url)
+                    element = self.wait.until(EC.element_to_be_clickable(locator))
+                    self._watch_input_events(element)
                     element.click()
                     element.send_keys(text)
                 elif attempt == 3:
@@ -222,7 +224,7 @@ class BaseAction:
                 return
 
             note = f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r}"
-            if attempt == 1:
+            if attempt in (1, 2):
                 note += f" 발생한 이벤트={self._read_input_events(locator)}"
             trace.append(note)
 
