@@ -4,8 +4,18 @@
 - 목록 노출 확인
 - 정렬 기능이 실제로 정렬된 결과를 내는지 값으로 검증
 """
-from BaseAction import BaseAction
+import pytest
+
 from ele_inventory import InventoryPage
+
+# 정렬 조건. 화면에 선택된 항목이 아니라 **실제 값의 순서**로 확인한다.
+# 정렬은 선택지가 늘어나기 쉬운 기능이라 절차를 하나만 두고 조건만 추가한다.
+SORT_CASES = [
+    pytest.param("lohi", "price", False, id="가격_낮은순"),
+    pytest.param("hilo", "price", True, id="가격_높은순"),
+    pytest.param("az", "name", False, id="이름_오름차순"),
+    pytest.param("za", "name", True, id="이름_내림차순"),
+]
 
 
 def _prices(base):
@@ -13,6 +23,7 @@ def _prices(base):
     return [float(t.replace("$", "")) for t in base.get_texts(InventoryPage.item_price)]
 
 
+@pytest.mark.smoke
 def test_product_list_displayed(logged_in):
     """로그인 후 상품 목록이 노출되고 항목 수가 0보다 커야 한다"""
     driver, base = logged_in
@@ -21,36 +32,24 @@ def test_product_list_displayed(logged_in):
     assert base.count(InventoryPage.item) > 0, "상품이 하나도 노출되지 않았습니다"
 
 
-def test_sort_price_low_to_high(logged_in):
-    """가격 낮은 순 정렬 — 화면 표시가 아니라 실제 값의 순서를 확인"""
+@pytest.mark.regression
+@pytest.mark.parametrize("option, field, reverse", SORT_CASES)
+def test_sort(logged_in, option, field, reverse):
+    """정렬 결과를 화면 표시가 아니라 실제 값의 순서로 확인한다"""
     driver, base = logged_in
 
-    base.select_by_value(InventoryPage.sort_select, "lohi")
-    prices = _prices(base)
+    base.select_by_value(InventoryPage.sort_select, option)
 
-    assert prices == sorted(prices), f"오름차순으로 정렬되지 않았습니다: {prices}"
+    if field == "price":
+        values = _prices(base)
+    else:
+        values = base.get_texts(InventoryPage.item_name)
 
-
-def test_sort_price_high_to_low(logged_in):
-    """가격 높은 순 정렬"""
-    driver, base = logged_in
-
-    base.select_by_value(InventoryPage.sort_select, "hilo")
-    prices = _prices(base)
-
-    assert prices == sorted(prices, reverse=True), f"내림차순으로 정렬되지 않았습니다: {prices}"
+    assert values == sorted(values, reverse=reverse), \
+        f"'{option}' 정렬 결과가 순서에 맞지 않습니다: {values}"
 
 
-def test_sort_name_z_to_a(logged_in):
-    """이름 역순 정렬"""
-    driver, base = logged_in
-
-    base.select_by_value(InventoryPage.sort_select, "za")
-    names = base.get_texts(InventoryPage.item_name)
-
-    assert names == sorted(names, reverse=True), f"역순 정렬되지 않았습니다: {names}"
-
-
+@pytest.mark.regression
 def test_sort_does_not_change_item_count(logged_in):
     """
     정렬을 바꿔도 상품 수는 달라지면 안 된다.

@@ -4,7 +4,8 @@
 정상 완료 경로뿐 아니라 필수값 누락, 중간 취소 같은
 정상 흐름에서 벗어나는 경로도 함께 검증합니다.
 """
-from BaseAction import BaseAction
+import pytest
+
 from ele_cart import CartPage
 from ele_checkout import CheckoutComplete, CheckoutStepOne, CheckoutStepTwo
 from ele_inventory import ITEM_BACKPACK, ITEM_BIKE_LIGHT, Header, InventoryPage
@@ -47,6 +48,7 @@ def _fill_customer_info(base, fields):
     raise AssertionError(f"배송 정보 입력값이 유지되지 않습니다: {remaining}")
 
 
+@pytest.mark.smoke
 def test_checkout_complete(logged_in):
     """주문 전체 플로우가 완료 화면까지 도달해야 한다"""
     driver, base = logged_in
@@ -61,6 +63,7 @@ def test_checkout_complete(logged_in):
     assert "Thank you for your order" in base.get_text(CheckoutComplete.header)
 
 
+@pytest.mark.regression
 def test_checkout_required_fields(logged_in):
     """필수값을 비우면 다음 단계로 넘어가면 안 된다"""
     driver, base = logged_in
@@ -76,6 +79,7 @@ def test_checkout_required_fields(logged_in):
     assert "checkout-step-two" not in driver.current_url
 
 
+@pytest.mark.regression
 def test_checkout_summary_matches_cart(logged_in):
     """
     주문 확인 화면의 상품이 장바구니와 일치해야 한다.
@@ -94,6 +98,7 @@ def test_checkout_summary_matches_cart(logged_in):
     assert len(summary_names) == 2, f"확인 화면 상품 수가 다릅니다: {summary_names}"
 
 
+@pytest.mark.regression
 def test_checkout_cancel_keeps_cart(logged_in):
     """
     주문 도중 취소해도 장바구니 내용은 남아 있어야 한다.
@@ -109,6 +114,7 @@ def test_checkout_cancel_keeps_cart(logged_in):
     assert base.count(CartPage.item) == 1, "주문 취소 후 장바구니가 비워졌습니다"
 
 
+@pytest.mark.regression
 def test_order_complete_clears_cart(logged_in):
     """주문 완료 후에는 장바구니가 비워져야 한다"""
     driver, base = logged_in

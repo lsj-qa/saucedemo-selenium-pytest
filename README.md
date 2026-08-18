@@ -4,14 +4,17 @@
 
 Selenium + pytest 기반 웹 UI 자동화 테스트입니다.
 데모 커머스 사이트 [saucedemo.com](https://www.saucedemo.com/) 을 대상으로
-**로그인 → 상품 조회 → 장바구니 → 주문 완료**까지의 흐름을 검증합니다.
+**로그인 → 상품 조회 → 장바구니 → 주문 완료**까지의 흐름을 24개 케이스로 검증합니다.
+
+> **케이스를 왜 이렇게 골랐는지**는 [테스트 설계 문서](docs/테스트_설계.md) 에 정리했습니다.
+> 리스크 기반 우선순위, 의도적으로 제외한 항목, 안정성 정책이 들어 있습니다.
 
 ---
 
 ## 구조
 
 ```
-├── conftest.py          WebDriver 생성/종료, 공용 fixture
+├── conftest.py          WebDriver 생성/종료, 공용 fixture, 실패 시 화면 저장
 ├── BaseAction.py        클릭·입력·조회·대기 등 공통 동작
 ├── ele_login.py         화면별 element 정의
 ├── ele_inventory.py
@@ -20,7 +23,9 @@ Selenium + pytest 기반 웹 UI 자동화 테스트입니다.
 ├── test_Login.py        시나리오
 ├── test_Inventory.py
 ├── test_Cart.py
-└── test_Checkout.py
+├── test_Checkout.py
+└── docs/
+    └── 테스트_설계.md    선정 근거 · 우선순위 · 제외 항목 · 안정성 정책
 ```
 
 **element 정의를 테스트 로직과 분리(Page Object)** 했습니다.
@@ -43,6 +48,18 @@ pytest --headless                       # 브라우저 창 없이 (CI 용)
 pytest --html=TestResult.html           # HTML 리포트 생성
 ```
 
+**실행 범위를 나눠서** 돌릴 수 있습니다.
+
+```bash
+pytest -m smoke                         # 핵심 흐름 4건 (약 20초)
+pytest -m regression                    # 전체 검증
+pytest -n auto                          # 브라우저를 여러 개 띄워 나눠 실행
+```
+
+핵심 흐름이 깨진 빌드는 전체를 돌릴 이유가 없으므로, CI 는 **smoke 를 먼저 통과시킨 뒤**
+전체를 실행합니다. 변경이 없는 날에도 하루 한 번 정기 실행합니다 —
+코드가 그대로여도 대상 사이트가 바뀌면 깨지기 때문입니다.
+
 Chrome 이 설치되어 있으면 드라이버는 Selenium 이 자동으로 준비합니다.
 
 ---
@@ -54,20 +71,34 @@ Chrome 이 설치되어 있으면 드라이버는 Selenium 이 자동으로 준�
 | 케이스 | 확인 내용 |
 |---|---|
 | `test_login_logout` | 로그인 후 상품 목록 진입, 로그아웃 후 복귀 |
-| `test_login_locked_out_user` | 잠긴 계정 차단 및 안내 문구 |
-| `test_login_wrong_password` | 비밀번호 불일치 시 진입 차단 |
-| `test_login_empty_input` | 필수값 미입력 안내 |
+| `test_login_rejected` **(6종)** | 차단 조건별로 **다른 사유**가 안내되는지 |
 | `test_logout_then_back_button` | 로그아웃 후 뒤로가기로 이전 화면 접근 불가 |
+
+차단 케이스는 조건마다 함수를 두지 않고 **데이터로 관리**합니다.
+
+```python
+REJECTED_LOGINS = [
+    pytest.param(LOCKED_OUT_USER, PASSWORD, "locked out", id="잠긴계정"),
+    pytest.param(STANDARD_USER, "wrong_password", "do not match", id="비밀번호불일치"),
+    pytest.param("", PASSWORD, "Username is required", id="아이디미입력"),
+    ...
+]
+```
+
+조건이 늘어도 확인 절차는 하나만 유지됩니다. 새 조건은 이 표에 한 줄을 더하면 됩니다.
+
+"들어가지지 않았다"만 확인하면 **사유가 뒤바뀌어도 통과**하므로, 안내 문구까지 대조합니다.
 
 ### 상품 목록 (`test_Inventory.py`)
 
 | 케이스 | 확인 내용 |
 |---|---|
 | `test_product_list_displayed` | 목록 노출 |
-| `test_sort_price_low_to_high` | 가격 오름차순 — **실제 값의 순서**로 검증 |
-| `test_sort_price_high_to_low` | 가격 내림차순 |
-| `test_sort_name_z_to_a` | 이름 역순 |
+| `test_sort` **(4종)** | 가격·이름 정렬 — **실제 값의 순서**로 검증 |
 | `test_sort_does_not_change_item_count` | 정렬 변경이 상품 수에 영향을 주지 않음 |
+
+정렬은 "정렬 옵션이 선택되었는지"를 확인하면 **정렬이 전혀 동작하지 않아도 통과**합니다.
+그래서 실제 가격·이름 값을 꺼내 순서를 비교합니다.
 
 ### 장바구니 (`test_Cart.py`)
 

@@ -4,11 +4,13 @@
 원본(모바일 앱) 자동화에서 '공고 등록 → 수정 → 삭제' 로 구성했던
 생명주기 검증을 이 사이트의 '담기 → 변경 → 제거' 로 옮긴 것입니다.
 """
-from BaseAction import BaseAction
+import pytest
+
 from ele_cart import CartPage
 from ele_inventory import ITEM_BACKPACK, ITEM_BIKE_LIGHT, Header, InventoryPage
 
 
+@pytest.mark.smoke
 def test_add_to_cart(logged_in):
     """상품을 담으면 배지 수량이 증가하고 장바구니에 노출되어야 한다"""
     driver, base = logged_in
@@ -24,6 +26,7 @@ def test_add_to_cart(logged_in):
     assert base.get_text(CartPage.item_quantity) == "1"
 
 
+@pytest.mark.regression
 def test_add_multiple_items(logged_in):
     """여러 상품을 담으면 수량이 누적되어야 한다"""
     driver, base = logged_in
@@ -39,6 +42,7 @@ def test_add_multiple_items(logged_in):
     assert base.count(CartPage.item) == 2
 
 
+@pytest.mark.regression
 def test_remove_from_cart(logged_in):
     """장바구니에서 제거하면 배지가 사라져야 한다"""
     driver, base = logged_in
@@ -53,6 +57,7 @@ def test_remove_from_cart(logged_in):
     assert base.is_absent(Header.cart_badge), "장바구니를 비웠는데 수량 배지가 남아 있습니다"
 
 
+@pytest.mark.regression
 def test_cart_kept_after_navigation(logged_in):
     """
     목록 ↔ 장바구니를 오가도 담은 내용이 유지되어야 한다.
@@ -73,6 +78,7 @@ def test_cart_kept_after_navigation(logged_in):
     assert base.count(CartPage.item) == 1
 
 
+@pytest.mark.regression
 def test_add_remove_repeat(logged_in):
     """
     담기와 제거를 반복해도 수량이 어긋나지 않아야 한다.
