@@ -9,6 +9,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     TimeoutException,
 )
+from selenium.webdriver import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
@@ -163,11 +164,16 @@ class BaseAction:
         화면이 준비되는 데 걸리는 시간은 환경마다 다르므로, 확인에도 대기를 두고
         반영될 때까지 여러 번 시도한다.
 
-        키 입력은 포커스를 받은 칸으로 전달된다. 그래서 입력 전에 칸을 눌러
-        포커스를 확실히 준다. 그래도 들어가지 않으면 마지막에는 값을 직접 넣고
-        입력 이벤트를 발생시킨다. (아래 _set_value_directly 참고)
+        입력 방식은 한 가지가 아니다. 전달 경로가 서로 달라 어떤 환경에서는 한쪽만
+        먹히므로, 아래 순서대로 바꿔가며 시도하고 **어느 방식에서 통과했는지를 남긴다.**
+        무엇이 통하는지 모른 채 우회부터 하면 원인이 영영 묻힌다.
+
+            1) 칸을 눌러 포커스를 준 뒤 입력
+            2) 포커스를 주지 않고 입력
+            3) 마우스·키보드 동작을 직접 조합해 입력
+            4) 값을 직접 넣고 입력 이벤트 발생 (실제 키 입력이 아닌 마지막 수단)
         """
-        last_seen = None
+        trace = []
         for attempt in range(1, 6):
             try:
                 element = self.wait.until(EC.element_to_be_clickable(locator))
@@ -177,26 +183,41 @@ class BaseAction:
                     element.clear()
                     element = self.driver.find_element(*locator)
 
-                if attempt <= 3:
-                    element.click()          # 포커스를 확실히 준 뒤 입력
+                if attempt == 1:
+                    method = "눌러서 포커스 후 입력"
+                    element.click()
                     element.send_keys(text)
+                elif attempt == 2:
+                    method = "포커스 없이 입력"
+                    element.send_keys(text)
+                elif attempt == 3:
+                    method = "마우스·키보드 동작으로 입력"
+                    ActionChains(self.driver).move_to_element(element) \
+                        .click().send_keys(text).perform()
                 else:
-                    # 우회 수단이 쓰였다는 사실이 드러나야 한다.
-                    # 통과했더라도 실제 키 입력은 실패한 것이므로 확인이 필요하다.
-                    print(f"[키 입력 실패 → 값 직접 입력] {locator} ({attempt}회차)")
+                    method = "값 직접 입력"
                     self._set_value_directly(element, text)
-            except (StaleElementReferenceException, ElementClickInterceptedException):
+            except (StaleElementReferenceException, ElementClickInterceptedException) as exc:
+                trace.append(f"{attempt}회차 {type(exc).__name__}")
                 continue
             except TimeoutException:
                 raise AssertionError(f"입력할 수 없습니다: {locator}")
 
             if self._value_becomes(locator, text):
+                if attempt > 1:
+                    # 첫 방식이 통하지 않았다는 사실이 드러나야 한다.
+                    # 통과했더라도 원인은 남아 있으므로 확인이 필요하다.
+                    print(f"[입력 방식 전환] {locator} → {attempt}회차 '{method}' 로 성공")
+                    print(f"  경과: {trace}")
+                    if attempt >= 4:
+                        print(f"  칸 상태: {self._input_state(locator)}")
                 return
-            last_seen = self.get_value(locator)
+
+            trace.append(f"{attempt}회차 '{method}' 후 값={self.get_value(locator)!r}")
 
         raise AssertionError(
             f"입력값이 유지되지 않습니다: {locator} = '{text}' "
-            f"(마지막 값: {last_seen!r}, 칸 상태: {self._input_state(locator)})"
+            f"(경과: {trace}, 칸 상태: {self._input_state(locator)})"
         )
 
     def _input_state(self, locator):
