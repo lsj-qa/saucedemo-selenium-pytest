@@ -162,6 +162,10 @@ class BaseAction:
 
         화면이 준비되는 데 걸리는 시간은 환경마다 다르므로, 확인에도 대기를 두고
         반영될 때까지 여러 번 시도한다.
+
+        키 입력은 포커스를 받은 칸으로 전달된다. 그래서 입력 전에 칸을 눌러
+        포커스를 확실히 준다. 그래도 들어가지 않으면 마지막에는 값을 직접 넣고
+        입력 이벤트를 발생시킨다. (아래 _set_value_directly 참고)
         """
         last_seen = None
         for attempt in range(1, 6):
@@ -172,8 +176,13 @@ class BaseAction:
                 if element.get_attribute("value"):
                     element.clear()
                     element = self.driver.find_element(*locator)
-                element.send_keys(text)
-            except StaleElementReferenceException:
+
+                if attempt <= 3:
+                    element.click()          # 포커스를 확실히 준 뒤 입력
+                    element.send_keys(text)
+                else:
+                    self._set_value_directly(element, text)
+            except (StaleElementReferenceException, ElementClickInterceptedException):
                 continue
             except TimeoutException:
                 raise AssertionError(f"입력할 수 없습니다: {locator}")
@@ -183,7 +192,61 @@ class BaseAction:
             last_seen = self.get_value(locator)
 
         raise AssertionError(
-            f"입력값이 유지되지 않습니다: {locator} = '{text}' (마지막 값: {last_seen!r})"
+            f"입력값이 유지되지 않습니다: {locator} = '{text}' "
+            f"(마지막 값: {last_seen!r}, 칸 상태: {self._input_state(locator)})"
+        )
+
+    def _input_state(self, locator):
+        """
+        입력이 안 될 때 원인을 좁히기 위한 칸의 상태.
+
+        읽기전용인지, 포커스가 다른 곳에 있는지, 다른 요소가 위를 덮고 있는지를
+        확인한다. 이 환경에서만 재현되는 경우 로그에 이 값이 남아야 판단할 수 있다.
+        """
+        try:
+            element = self.driver.find_element(*locator)
+            return self.driver.execute_script(
+                """
+                const element = arguments[0];
+                const box = element.getBoundingClientRect();
+                const onTop = document.elementFromPoint(
+                    box.left + box.width / 2, box.top + box.height / 2);
+                const active = document.activeElement;
+                return {
+                    readonly: element.readOnly,
+                    disabled: element.disabled,
+                    focused: active === element,
+                    active_id: active ? active.id : null,
+                    on_top: onTop ? (onTop.id || onTop.className || onTop.tagName) : null,
+                    size: [Math.round(box.width), Math.round(box.height)],
+                };
+                """,
+                element,
+            )
+        except Exception as exc:
+            return f"상태 확인 실패: {exc}"
+
+    def _set_value_directly(self, element, text):
+        """
+        키 입력이 끝내 전달되지 않을 때 쓰는 마지막 수단.
+
+        값만 바꿔 넣으면 화면을 그리는 쪽은 값이 바뀐 사실을 모른 채 이전 상태를
+        유지하다가 다시 지워 버린다. 그래서 값을 넣은 뒤 입력 이벤트를 함께 발생시켜
+        사용자가 직접 친 것과 같은 상태로 만든다.
+
+        실제 키 입력이 아니므로 우선 사용하지 않고, 앞선 시도가 모두 실패했을 때만 쓴다.
+        """
+        self.driver.execute_script(
+            """
+            const element = arguments[0], value = arguments[1];
+            const setValue = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value').set;
+            setValue.call(element, value);
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            """,
+            element,
+            text,
         )
 
     def _value_becomes(self, locator, text, timeout=2):
