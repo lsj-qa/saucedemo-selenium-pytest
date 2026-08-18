@@ -9,12 +9,16 @@ from pathlib import Path
 
 import pytest
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from BaseAction import BaseAction
 from ele_login import LoginPage
 
 BASE_URL = "https://www.saucedemo.com/"
+
+# 지원 브라우저. 둘 다 같은 엔진(Chromium)을 쓰므로 실행 옵션을 공유한다.
+BROWSERS = ("chrome", "edge")
 
 # 실패한 순간의 화면과 HTML 을 남겨 둘 위치.
 # 다른 환경(CI)에서만 재현되는 실패는 로그만으로 원인을 좁히기 어렵다.
@@ -33,13 +37,25 @@ def pytest_addoption(parser):
         default=False,
         help="브라우저 창 없이 실행 (CI 용)",
     )
+    parser.addoption(
+        "--browser",
+        action="store",
+        default="chrome",
+        choices=BROWSERS,
+        help="실행할 브라우저 (기본: chrome)",
+    )
 
 
-@pytest.fixture()
-def driver(request):
-    """Chrome WebDriver 생성 → 테스트 종료 시 자동 종료."""
-    options = Options()
-    if request.config.getoption("--headless"):
+def _build_options(browser, headless):
+    """
+    브라우저별 실행 옵션.
+
+    Chrome 과 Edge 는 같은 엔진을 쓰므로 옵션 이름이 동일하다.
+    옵션을 한 곳에서 만들어, 브라우저가 늘어도 설정이 갈라지지 않게 한다.
+    """
+    options = EdgeOptions() if browser == "edge" else ChromeOptions()
+
+    if headless:
         options.add_argument("--headless=new")
     options.add_argument("--window-size=1440,900")
     options.add_argument("--disable-notifications")
@@ -52,9 +68,22 @@ def driver(request):
     options.add_argument("--disable-renderer-backgrounding")
     options.add_argument("--disable-features=CalculateNativeWinOcclusion")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    return options
 
-    # Selenium 4.6+ 는 드라이버를 자동으로 내려받으므로 별도 설치가 필요 없습니다.
-    drv = webdriver.Chrome(options=options)
+
+@pytest.fixture()
+def driver(request):
+    """WebDriver 생성 → 테스트 종료 시 자동 종료. 브라우저는 --browser 로 지정."""
+    browser = request.config.getoption("--browser")
+    options = _build_options(browser, request.config.getoption("--headless"))
+
+    # Selenium 4.6+ 는 브라우저에 맞는 드라이버를 자동으로 내려받으므로
+    # 브라우저를 바꿔도 별도 설치가 필요 없습니다.
+    if browser == "edge":
+        drv = webdriver.Edge(options=options)
+    else:
+        drv = webdriver.Chrome(options=options)
+
     drv.get(BASE_URL)
 
     yield drv
@@ -71,7 +100,9 @@ def pytest_runtest_makereport(item, call):
         drv = item.funcargs.get("driver")
         if drv is not None:
             FAILURE_DIR.mkdir(exist_ok=True)
-            name = re.sub(r"[^\w.-]", "_", item.name)
+            # 브라우저별로 결과가 덮이지 않도록 파일명에 브라우저를 포함한다.
+            browser = item.config.getoption("--browser")
+            name = re.sub(r"[^\w.-]", "_", f"{item.name}_{browser}")
             try:
                 drv.save_screenshot(str(FAILURE_DIR / f"{name}.png"))
                 (FAILURE_DIR / f"{name}.html").write_text(

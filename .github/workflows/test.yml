@@ -14,7 +14,20 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 브라우저와 운영체제를 함께 바꿔가며 실행한다.
+    # Edge 는 Windows 에 기본 설치되어 있어, 브라우저 검증과 운영체제 검증을 함께 한다.
+    strategy:
+      # 한쪽이 깨져도 나머지는 끝까지 돌려야 어느 조합의 문제인지 구분할 수 있다.
+      fail-fast: false
+      matrix:
+        include:
+          - browser: chrome
+            os: ubuntu-latest
+          - browser: edge
+            os: windows-latest
+
+    name: ${{ matrix.browser }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: 코드 가져오기
@@ -26,8 +39,10 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      # 실행 환경에 Chrome 이 있다고 가정하지 않고 명시적으로 설치한다.
+      # 리눅스에는 Chrome 이 없을 수 있어 명시적으로 설치한다.
+      # Windows 에는 Edge 가 기본 설치되어 있어 별도 설치가 필요 없다.
       - name: Chrome 설치
+        if: matrix.browser == 'chrome'
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
@@ -35,26 +50,22 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
-      - name: 실행 환경 확인
-        continue-on-error: true
-        run: |
-          python --version
-          chrome --version || google-chrome --version || echo "Chrome 버전 확인 생략"
-
       # 핵심 흐름이 깨진 빌드는 전체를 돌릴 이유가 없다. 먼저 빠르게 걸러낸다.
       - name: 핵심 흐름 확인 (smoke)
-        run: pytest --headless -m smoke
+        run: pytest --headless --browser ${{ matrix.browser }} -m smoke
 
       # 전체는 브라우저를 여러 개 띄워 나눠 실행한다.
       - name: 전체 검증 (regression)
-        run: pytest --headless -n auto --html=TestResult.html --self-contained-html
+        run: >
+          pytest --headless --browser ${{ matrix.browser }} -n auto
+          --html=TestResult.html --self-contained-html
 
       # 실패했을 때도 리포트를 남겨야 원인을 확인할 수 있으므로 always() 사용
       - name: 테스트 리포트 업로드
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
+          name: test-report-${{ matrix.browser }}
           path: TestResult.html
           retention-days: 14
 
@@ -63,7 +74,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: failure-screenshots
+          name: failure-screenshots-${{ matrix.browser }}
           path: failures/
           retention-days: 14
           if-no-files-found: ignore
