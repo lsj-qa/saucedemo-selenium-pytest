@@ -12,6 +12,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 
+from api_client import BookingApi
 from BaseAction import BaseAction
 from ele_login import LoginPage
 
@@ -122,3 +123,40 @@ def logged_in(driver):
     base.send_keys(LoginPage.password, PASSWORD)
     base.click(LoginPage.login_button, until="inventory.html")
     return driver, base
+
+
+# ---------- API 계층 ----------
+
+@pytest.fixture(scope="session")
+def api():
+    """API 클라이언트. 연결을 재사용하도록 실행 단위로 하나만 만든다."""
+    return BookingApi()
+
+
+@pytest.fixture(scope="session")
+def token(api):
+    """수정·삭제에 필요한 인증 토큰."""
+    response = api.issue_token()
+    assert response.status_code == 200, f"토큰 발급 실패: {response.status_code}"
+
+    issued = response.json().get("token")
+    assert issued, f"응답에 토큰이 없습니다: {response.text}"
+    return issued
+
+
+@pytest.fixture()
+def booking(api, token, booking_payload):
+    """
+    예약 하나를 만들어 두고, 테스트가 끝나면 지운다.
+
+    테스트가 서로의 데이터를 건드리지 않도록 케이스마다 새로 만든다.
+    실패로 중단되더라도 정리는 실행된다.
+    """
+    response = api.create(booking_payload)
+    assert response.status_code == 200, f"준비 단계 실패 - 예약 생성: {response.status_code}"
+
+    booking_id = response.json()["bookingid"]
+
+    yield booking_id, booking_payload
+
+    api.delete(booking_id, token)

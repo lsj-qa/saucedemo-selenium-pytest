@@ -3,8 +3,14 @@
 [![UI Tests](https://github.com/lsj-qa/saucedemo-selenium-pytest/actions/workflows/test.yml/badge.svg)](https://github.com/lsj-qa/saucedemo-selenium-pytest/actions/workflows/test.yml)
 
 Selenium + pytest 기반 웹 UI 자동화 테스트입니다.
-데모 커머스 사이트 [saucedemo.com](https://www.saucedemo.com/) 을 대상으로
-**로그인 → 상품 조회 → 장바구니 → 주문 완료**까지의 흐름을 24개 케이스로 검증합니다.
+**UI 24건 + API 11건**, 두 계층을 검증합니다.
+
+| 계층 | 대상 | 확인하는 것 |
+|---|---|---|
+| **UI** | [saucedemo.com](https://www.saucedemo.com/) | 로그인 → 상품 조회 → 장바구니 → 주문 완료 |
+| **API** | [restful-booker](https://restful-booker.herokuapp.com) | 인증 → 예약 생성·조회·수정·삭제 |
+
+계층은 다르지만 **케이스를 뽑는 관점은 같습니다** — 권한, 되돌리는 동작, 데이터 정합성.
 
 > **케이스를 왜 이렇게 골랐는지**는 [테스트 설계 문서](docs/테스트_설계.md) 에 정리했습니다.
 > 리스크 기반 우선순위, 의도적으로 제외한 항목, 안정성 정책이 들어 있습니다.
@@ -17,19 +23,29 @@ Selenium + pytest 기반 웹 UI 자동화 테스트입니다.
 ## 구조
 
 ```
-├── conftest.py          WebDriver 생성/종료, 공용 fixture, 실패 시 화면 저장
-├── BaseAction.py        클릭·입력·조회·대기 등 공통 동작
-├── ele_login.py         화면별 element 정의
+├── conftest.py            WebDriver 생성/종료, 공용 fixture, 실패 시 화면 저장
+│
+├── BaseAction.py          [UI] 클릭·입력·조회·대기 등 공통 동작
+├── ele_login.py           [UI] 화면별 element 정의
 ├── ele_inventory.py
 ├── ele_cart.py
 ├── ele_checkout.py
-├── test_Login.py        시나리오
+├── test_Login.py          [UI] 시나리오
 ├── test_Inventory.py
 ├── test_Cart.py
 ├── test_Checkout.py
+│
+├── api_client.py          [API] 주소·헤더·인증·재시도 정책
+├── test_Api_Booking.py    [API] 시나리오
+│
 └── docs/
-    └── 테스트_설계.md    선정 근거 · 우선순위 · 제외 항목 · 안정성 정책
+    ├── 테스트_설계.md          선정 근거 · 우선순위 · 제외 항목 · 안정성 정책
+    └── 입력_문제_조사기록.md    원인 미특정 문제의 조사 경위와 판단
 ```
+
+두 계층 모두 **테스트 코드가 도구를 직접 다루지 않게** 한 단계 감쌌습니다.
+UI 는 `BaseAction`, API 는 `api_client` 가 같은 역할입니다 —
+대기 방식이나 재시도 정책을 바꿀 때 시나리오 파일을 건드리지 않습니다.
 
 **element 정의를 테스트 로직과 분리(Page Object)** 했습니다.
 화면이 개편되면 `ele_*.py` 만 수정하면 되고, 시나리오 파일은 건드리지 않습니다.
@@ -58,6 +74,9 @@ pytest -m smoke                         # 핵심 흐름 4건 (약 20초)
 pytest -m regression                    # 전체 검증
 pytest -n auto                          # 브라우저를 여러 개 띄워 나눠 실행
 pytest --browser edge                   # Edge 로 실행 (기본값은 chrome)
+
+pytest -m api                           # API 만 (브라우저 불필요, 약 8초)
+pytest -m "not api"                     # UI 만
 ```
 
 핵심 흐름이 깨진 빌드는 전체를 돌릴 이유가 없으므로, CI 는 **smoke 를 먼저 통과시킨 뒤**
@@ -139,6 +158,41 @@ REJECTED_LOGINS = [
 | `test_checkout_summary_matches_cart` | 확인 화면과 장바구니 내용 일치 |
 | `test_checkout_cancel_keeps_cart` | 주문 취소 후 장바구니 유지 |
 | `test_order_complete_clears_cart` | 주문 완료 후 장바구니 초기화 |
+
+### API (`test_Api_Booking.py`)
+
+| 케이스 | 확인 내용 |
+|---|---|
+| `test_issue_token` | 올바른 계정으로 토큰 발급 |
+| `test_issue_token_rejected` **(3종)** | 잘못된 계정에 토큰이 발급되지 않고 사유가 오는지 |
+| `test_create_and_read` | 생성 후 **다시 조회해** 저장된 값이 같은지 |
+| `test_read_unknown_id_returns_not_found` | 없는 예약 조회 |
+| `test_create_rejects_incomplete_payload` | 필수값 누락 시 생성 거부 |
+| `test_update_requires_auth` | 인증 없이 수정 거부 + **저장된 값도 그대로인지** |
+| `test_delete_requires_auth` | 인증 없이 삭제 거부 + 예약이 남아 있는지 |
+| `test_partial_update_keeps_other_fields` | 일부만 수정할 때 나머지 값 유지 |
+| `test_delete_then_read_returns_not_found` | 삭제 후 실제로 조회되지 않는지 |
+
+**응답만 보고 끝내지 않습니다.** 생성·수정·삭제는 모두 **다시 조회해서** 확인합니다.
+"응답은 정상인데 저장은 안 되는" 또는 "막았다고 응답했는데 데이터는 바뀐" 결함은
+응답만 봐서는 잡히지 않습니다.
+
+권한 케이스가 그 예입니다.
+
+```python
+response = api.update(booking_id, {**payload, "firstname": "침입자"})
+assert response.status_code in (401, 403)          # 거부했는가
+
+saved = api.get(booking_id).json()
+assert saved["firstname"] == payload["firstname"]  # 실제로 안 바뀌었는가
+```
+
+#### 검증 중 확인한 사항
+
+필수값이 빠진 요청에 이 서비스는 **400 이 아니라 500 을 응답**합니다.
+잘못된 요청은 클라이언트 오류로 구분되어야 하므로 실무라면 결함으로 등록할 부분입니다.
+테스트는 상태 코드를 고정하지 않고 **'거부되었는가'** 를 기준으로 검증하고,
+이 내용은 케이스 주석에 남겼습니다.
 
 ---
 

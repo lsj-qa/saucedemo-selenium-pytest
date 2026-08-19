@@ -51,13 +51,14 @@ jobs:
         run: pip install -r requirements.txt
 
       # 핵심 흐름이 깨진 빌드는 전체를 돌릴 이유가 없다. 먼저 빠르게 걸러낸다.
+      # API 계층은 브라우저가 필요 없어 별도 작업에서 한 번만 돌린다.
       - name: 핵심 흐름 확인 (smoke)
-        run: pytest --headless --browser ${{ matrix.browser }} -m smoke
+        run: pytest --headless --browser ${{ matrix.browser }} -m "smoke and not api"
 
       # 전체는 브라우저를 여러 개 띄워 나눠 실행한다.
       - name: 전체 검증 (regression)
         run: >
-          pytest --headless --browser ${{ matrix.browser }} -n auto
+          pytest --headless --browser ${{ matrix.browser }} -m "not api" -n auto
           --html=TestResult.html --self-contained-html
 
       # 실패했을 때도 리포트를 남겨야 원인을 확인할 수 있으므로 always() 사용
@@ -78,6 +79,36 @@ jobs:
           path: failures/
           retention-days: 14
           if-no-files-found: ignore
+
+  # API 계층은 브라우저가 필요 없어 훨씬 빠르고 안정적이다.
+  # UI 와 분리해 두면 실패했을 때 어느 계층의 문제인지 바로 구분된다.
+  api:
+    name: API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: API 검증
+        run: pytest -m api --html=ApiResult.html --self-contained-html
+
+      - name: API 리포트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-api
+          path: ApiResult.html
+          retention-days: 14
 
   # 주문 정보 화면에서만 키 입력이 전달되지 않는다.
   # 창을 띄운 환경(xvfb)에서도 같은 현상이 나와, 화면 없이 실행하는 방식은 원인이 아님을 확인했다.
