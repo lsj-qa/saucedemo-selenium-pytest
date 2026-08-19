@@ -12,6 +12,12 @@ on:
   schedule:
     - cron: '0 18 * * *'   # 매일 새벽 3시 (한국 시간)
 
+# 새 코드가 올라오면 앞서 돌던 실행은 의미가 없다.
+# 이미 지난 코드의 결과를 기다리느라 실행 시간을 쓰지 않도록 앞의 것을 취소한다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     # 브라우저와 운영체제를 함께 바꿔가며 실행한다.
@@ -28,6 +34,9 @@ jobs:
 
     name: ${{ matrix.browser }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # 정상이면 3~7분이면 끝난다. 멈춘 실행은 실패로 끊어야 한다.
+    # 제한이 없으면 최대 6시간까지 돌면서 실행 시간만 소모한다.
+    timeout-minutes: 20
 
     steps:
       - name: 코드 가져오기
@@ -85,6 +94,7 @@ jobs:
   api:
     name: API
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: 코드 가져오기
@@ -115,6 +125,7 @@ jobs:
   # 이 작업은 그 비교를 계속 남겨두기 위한 것으로, 어떤 입력 방식이 통했는지를 함께 기록한다.
   input-method-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: 코드 가져오기
